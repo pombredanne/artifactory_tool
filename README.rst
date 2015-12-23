@@ -2,26 +2,14 @@
 artifactory_tool
 ===============================
 
-.. image:: https://img.shields.io/pypi/v/artifactory_tool.svg
-        :target: https://pypi.python.org/pypi/artifactory_tool
-
-.. image:: https://img.shields.io/travis/sean-abbott/artifactory_tool.svg
-        :target: https://travis-ci.org/sean-abbott/artifactory_tool
-
-.. image:: https://readthedocs.org/projects/artifactory_tool/badge/?version=latest
-        :target: https://readthedocs.org/projects/artifactory_tool/?badge=latest
-        :alt: Documentation Status
-
-
 Artifactory Configurater and Maniuplator
 
 * Free software: ISC license
-* Documentation: https://artifactory_tool.readthedocs.org.
 
 Features
 --------
 
-* TODO
+Update your artifactory ldap settings
 
 Credits
 ---------
