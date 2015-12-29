@@ -27,7 +27,7 @@ test_requirements = [
 
 setup(
     name='artifactory_tool',
-    version='0.0.2',
+    version='0.1.0',
     description="Artifactory Configurater and Maniuplator",
     long_description=readme + '\n\n' + history,
     author="Sean Abbott",
