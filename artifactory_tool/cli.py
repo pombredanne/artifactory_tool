@@ -11,8 +11,8 @@ import click
 import requests
 
 # This package
-#from artifactory_tool import get_artifactory_config_from_url, update_artifactory_config, update_ldapSettings_from_dict
 import artifactory_tool as at
+from artifactory_tool.exceptions import UnknownArtifactoryRestError
 
 def _get_ldap_dict(ldap_json):
     """ return an OrderedDict for the given json file
@@ -149,6 +149,39 @@ def _get_repos_from_directory(repo_dir):
 
     return repos_list_dict
 
+def _config_admin_pass(host_url, password, target_password):
+    """ set the admin password for artifactory
+
+    Parameters
+    ----------
+    host_url : string
+        url for artifactory server, sans artifactory
+    password : string
+        password for admin user
+    target_password : string
+        desired password for admin user
+    """
+    try:
+        changed = at.update_password(
+                host_url,
+                'admin',
+                password,
+                target_password
+                )
+    except UnknownArtifactoryRestError as ae:
+        click.echo("Failed to update password.")
+        click.echo(ae.msg)
+        raise
+    except:
+        click.echo("Failed to update password for reasons unknown.")
+        raise
+
+    if changed:
+        click.echo("Password successfully changed")
+    else:
+        click.echo("Password already at target")
+
+
 @click.group()
 @click.option('--username', help="username with admin privileges")
 @click.option('--password', help="password for user")
@@ -162,6 +195,7 @@ def cli(ctx, **kwargs):
 @cli.command()
 @click.option('--ldap_json', help="json file for ldap settings")
 @click.option('--repos_dir', help="Dir with repository configuration files")
+@click.option('--admin_pass', help="set new admin password to this")
 @click.pass_context
 def configure(ctx, **kwargs):
     ctx.obj.update(kwargs)
@@ -181,3 +215,15 @@ def configure(ctx, **kwargs):
             ctx.obj['password'],
             ctx.obj['repos_dir']
             )
+
+    if ctx.obj['admin_pass'] is not None:
+        if ctx.obj['username'] != 'admin':
+            click.echo("Must use the admin user to update the admin user")
+            sys.exit(1)
+
+        _config_admin_pass(
+            ctx.obj['url'],
+            ctx.obj['password'],
+            ctx.obj['admin_pass']
+            )
+

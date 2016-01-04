@@ -42,7 +42,9 @@ def update_password(host_url, username, orig_pass, target_pass):
     orig_auth = (username, orig_pass)
     target_auth = (username, target_pass)
 
-    get_pass_url = '{}/artifactory/api/security/encryptedPassword'.format(host_url)
+    get_pass_url = '{}/artifactory/api/security/encryptedPassword'.format(
+            normalize_url(host_url)
+            )
 
     orig_resp = requests.get(get_pass_url, auth=orig_auth)
     if orig_resp.status_code == 401:
@@ -64,17 +66,22 @@ def update_password(host_url, username, orig_pass, target_pass):
         return False
 
     user_json_url = '{}/artifactory/api/security/users/{}'.format(
-            host_url,
+            normalize_url(host_url),
             username
             )
 
     headers = {'Content-type': 'application/json'}
     user_dict_resp = requests.get(user_json_url, auth=auth)
     if not user_dict_resp.ok:
-        raise UnknownArtifactoryRestError(
-                "Couldn't get user information",
-                user_dict_resp
-                )
+        if user_dict_resp.status == 401:
+            msg = "Received an unauthorized message after authorization "
+            msg += "has been checked.  Wtf?"
+            raise UnknownArtifactoryRestError(msg, user_dict_resp)
+        else:
+            raise UnknownArtifactoryRestError(
+                    "Couldn't get user information",
+                    user_dict_resp
+                    )
 
     admin_dict = user_dict_resp.json()
     admin_dict.pop('lastLoggedIn')
@@ -89,10 +96,15 @@ def update_password(host_url, username, orig_pass, target_pass):
             )
 
     if not update_resp.ok:
-        raise UnknownArtifactoryRestError(
-                "Couldn't post user password update",
-                update_resp
-                )
+        if update_resp.status == 401:
+            msg = "Received an unauthorized message after authorization "
+            msg += "has been checked.  Wtf?"
+            raise UnknownArtifactoryRestError(msg, update_resp)
+        else:
+            raise UnknownArtifactoryRestError(
+                    "Couldn't post user password update",
+                    update_resp
+                    )
 
     final_check_resp = requests.get(get_pass_url, auth=target_auth)
     if not final_check_resp.ok:
