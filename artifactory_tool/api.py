@@ -9,7 +9,100 @@ import xmltodict
 
 # this package
 from utils import normalize_url
-from exceptions import ConfigFetchError, InvalidAPICallError
+from exceptions import ConfigFetchError, InvalidAPICallError, InvalidCredentialsError, UnknownArtifactoryRestError
+
+def update_password(host_url, username, orig_pass, target_pass):
+    """ set the password for the user to the target_pass
+
+    Parameters
+    ----------
+    host_url : string
+        A url of the form http(s)://domainname:port/context or
+        http(s)://ip:port/context
+    username : string
+        username of the password to change
+    orig_pass : string
+        original password to use for the update
+    target_pass : string
+        the desired new password
+
+    Returns
+    -------
+    changed : boolean
+        True if changes were made
+
+    Raises
+    ------
+    InvalidCredentialsError :
+        If neither the original or target credentials work to update the password
+    UnknownArtifactoryRestError :
+        If we get a response we haven't encountered and don't kow what to do with
+    """
+
+    orig_auth = (username, orig_pass)
+    target_auth = (username, target_pass)
+
+    get_pass_url = '{}/artifactory/api/security/encryptedPassword'.format(host_url)
+
+    orig_resp = requests.get(get_pass_url, auth=orig_auth)
+    if orig_resp.status_code == 401:
+        resp = requests.get(get_pass_url, auth=target_auth)
+        auth = target_auth
+    elif orig_resp.status_code == 200:
+        resp = orig_resp
+        auth = orig_auth
+    else:
+        raise UnknownArtifactoryRestError(
+                "Unexpected response when verifying credentials",
+                orig_resp
+                )
+
+    if resp.status_code != 200:
+        raise InvalidCrentialsError
+
+    if auth == target_auth:
+        return False
+
+    user_json_url = '{}/artifactory/api/security/users/{}'.format(
+            host_url,
+            username
+            )
+
+    headers = {'Content-type': 'application/json'}
+    user_dict_resp = requests.get(user_json_url, auth=auth)
+    if not user_dict_resp.ok:
+        raise UnknownArtifactoryRestError(
+                "Couldn't get user information",
+                user_dict_resp
+                )
+
+    admin_dict = user_dict_resp.json()
+    admin_dict.pop('lastLoggedIn')
+    admin_dict.pop('realm')
+    admin_dict['password'] = target_pass
+
+    update_resp = requests.post(
+            user_json_url,
+            auth=auth,
+            json=admin_dict,
+            headers=headers
+            )
+
+    if not update_resp.ok:
+        raise UnknownArtifactoryRestError(
+                "Couldn't post user password update",
+                update_resp
+                )
+
+    final_check_resp = requests.get(get_pass_url, auth=target_auth)
+    if not final_check_resp.ok:
+        raise UnknownArtifactoryRestError(
+                "Final password check failed.  Could not use new credentials",
+                final_check_resp
+                )
+
+    else:
+        return True
 
 def get_artifactory_config_from_url(host_url, auth):
     """retrieve the artifactory configuration xml doc
@@ -17,7 +110,8 @@ def get_artifactory_config_from_url(host_url, auth):
     Parameters
     ----------
     host_url:   string
-        A url of the form http(s)://domainname:port/context or http(s)://ip:port/context
+        A url of the form http(s)://domainname:port/context or
+        http(s)://ip:port/context
     auth:       tuple
                 a tuple a la requests auth of the form (user, password)
     """
@@ -143,6 +237,7 @@ def cr_repository(host_url, repo_dict, auth=None, session=None):
     else:
         resp = ses.put(repo_url, json=repo_dict, headers=headers)
 
+    # YELLOW need to add more logic to make this aware of if the configuration is changing
     if resp.ok:
         return True
     else:
