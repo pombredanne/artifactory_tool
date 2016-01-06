@@ -1,0 +1,16 @@
+{
+    "ldapSetting": {
+        "key": "my-ldap",
+        "enabled": "true",
+        "ldapUrl": "ldap://ldapserver.company.com:389/dc=company,dc=com",
+        "userDnPattern": "uid={0},cn=users,cn=accounts",
+        "search": {
+            "searchFilter": "uid={0}",
+            "searchSubTree": "true",
+            "managerDn": "uid=artifactory,cn=users,cn=accounts,dc=datarobot,dc=com",
+            "managerPassword": "ldappassword"
+        },
+        "autoCreateUser": "true",
+        "emailAttribute": "mail"
+    }
+}
