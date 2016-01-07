@@ -25,9 +25,15 @@ test_requirements = [
     "pytest"
 ]
 
+setup_requirements = [
+    'setuptools_scm'
+]
+
 setup(
     name='artifactory_tool',
-    version='0.2.0',
+    #version='0.2.0',
+    use_scm_version=True,
+    setup_requires=setup_requirements,
     description="Artifactory Configurater and Maniuplator",
     long_description=readme + '\n\n' + history,
     author="Sean Abbott",
@@ -40,13 +46,14 @@ setup(
                  'artifactory_tool'},
     include_package_data=True,
     install_requires=requirements,
-    license="BSD",
+    license="MIT",
     zip_safe=False,
     keywords='artifactory_tool',
     classifiers=[
         'Development Status :: 2 - Pre-Alpha',
         'Intended Audience :: Developers',
-        'License :: OSI Approved :: ISC License (ISCL)',
+        'Intended Audience :: Information Technology',
+        'License :: OSI Approved :: MIT License',
         'Natural Language :: English',
         "Programming Language :: Python :: 2",
         'Programming Language :: Python :: 2.6',
