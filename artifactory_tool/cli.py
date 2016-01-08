@@ -14,6 +14,11 @@ import requests
 import artifactory_tool as at
 from artifactory_tool.exceptions import UnknownArtifactoryRestError
 
+# "CONSTANTS"
+FETCH_WHAT_HELP_STR = """ What type of configs you want to fetch.  current options are repos (which takes optional --include_defaults and --include_filter arguements
+"""
+FETCH_REPO_TYPE_HELP_STR = """Artifactory repo type.  One of LOCAL, REMOTE, VIRTUAL.  If not given, all will be retreived."""
+
 def _get_ldap_dict(ldap_json):
     """ return an OrderedDict for the given json file
 
@@ -181,6 +186,62 @@ def _config_admin_pass(host_url, password, target_password):
     else:
         click.echo("Password already at target")
 
+def _fetch_repos(host_url, username, password, inc_defaults, inc_filter,
+        output_dir, repo_type):
+    """ download json configurations for repos, place them in output dir
+
+    Parameters
+    ----------
+    host_url : string
+        url for artifactory server, don't include /artifactory context
+    username : string
+        admin username on artifactory server
+    password : string
+        password for admin user
+    inc_defaults : boolean
+        Whether we should include the repos artifactory ships with
+    inc_filter : string
+        Only include repos whose key includes this filter
+    output_dir : string
+        directory to write json files to
+    repo_type : string
+        One of the 3 artifactory repo types (LOCAL, REMOTE, VIRTUAL)
+    """
+    if repo_type is not None:
+        repo_type = repo_type.upper()
+        if repo_type not in ["LOCAL", "REMOTE", "VIRTUAL"]:
+            click.echo("repo_type must be one of LOCAL, REMOTE, VIRTUAL")
+            sys.exit(1)
+    else:
+        repo_type = "ALL"
+
+    if not os.path.isdir(output_dir):
+        click.echo("Can't find target directory.  Exiting")
+        sys.exit(1)
+
+    repo_obj_list = at.get_repo_list(
+            host_url,
+            repo_type=repo_type,
+            include_defaults=inc_defaults,
+            include_filter=inc_filter
+            )
+
+    if len(repo_obj_list) == 0:
+        click.echo("No repos found.  Check your options")
+        sys.exit(1)
+
+    repo_list = [r['key'] for r in repo_obj_list]
+    repo_config_list = at.get_repo_configs(
+            host_url,
+            repo_list,
+            username=username,
+            passwd=password
+            )
+
+    for repo in repo_config_list:
+        repo_conf_file = os.path.join(output_dir, '{}.json'.format(repo['key']))
+        with open(repo_conf_file, 'w') as f:
+            f.write(json.dumps(repo, indent=4))
 
 @click.group()
 @click.option('--username', help="username with admin privileges")
@@ -191,6 +252,35 @@ def cli(ctx, **kwargs):
     """ Main entrypoint for artifactory_tool cli """
     ctx.obj = kwargs
 
+@cli.group()
+@click.pass_context
+def fetch(ctx, **kwargs):
+    """ fetch command group """
+    ctx.obj.update(kwargs)
+
+@fetch.command()
+@click.option('--include_defaults', is_flag=True, default=False,
+        help="include artifactory default repos with the repos arg")
+@click.option('--include_filter',
+        help="only repos that include this in their key will be fetched")
+@click.option('--output_dir', default=os.getcwd(),
+        help="directory to place files")
+@click.option('--repo_type', help=FETCH_REPO_TYPE_HELP_STR)
+@click.pass_context
+def repos(ctx, **kwargs):
+    """ commands for retreiving configs from artifactory
+    """
+    ctx.obj.update(kwargs)
+
+    _fetch_repos(
+        ctx.obj['url'],
+        ctx.obj['username'],
+        ctx.obj['password'],
+        ctx.obj['include_defaults'],
+        ctx.obj['include_filter'],
+        ctx.obj['output_dir'],
+        ctx.obj['repo_type']
+        )
 
 @cli.command()
 @click.option('--ldap_json', help="json file for ldap settings")
@@ -198,6 +288,8 @@ def cli(ctx, **kwargs):
 @click.option('--admin_pass', help="set new admin password to this")
 @click.pass_context
 def configure(ctx, **kwargs):
+    """ command(s) for configuring artifactory
+    """
     ctx.obj.update(kwargs)
 
     if ctx.obj['ldap_json'] is not None:
