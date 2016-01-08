@@ -31,7 +31,7 @@ setup_requirements = [
 
 setup(
     name='artifactory_tool',
-    #version='0.3.0',
+    #version='0.4.0',
     use_scm_version=True,
     setup_requires=setup_requirements,
     description="Artifactory Configurater and Maniuplator",
