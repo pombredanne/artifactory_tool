@@ -11,6 +11,23 @@ import xmltodict
 from utils import normalize_url
 from exceptions import ConfigFetchError, InvalidAPICallError, InvalidCredentialsError, UnknownArtifactoryRestError
 
+ART_REPO_TYPES = ["ALL", "LOCAL", "REMOTE", "VIRTUAL"]
+ART_DEFAULT_REPOS = [
+            'ext-release-local',
+            'ext-snapshot-local',
+            'libs-release-local',
+            'libs-snapshot-local',
+            'plugins-release-local',
+            'plugins-snapshot-local',
+            'jcenter-cache',
+            'libs-release',
+            'libs-snapshot',
+            'plugins-release',
+            'plugins-snapshot',
+            'remote-repos',
+            'jcenter'
+        ]
+
 def update_password(host_url, username, orig_pass, target_pass):
     """ set the password for the user to the target_pass
 
@@ -201,7 +218,8 @@ def update_artifactory_config(host_url, auth, config_dict):
 def cr_repository(host_url, repo_dict, auth=None, session=None):
     """ take a configuration dict and post it host_url
 
-    Should use https://www.jfrog.com/confluence/display/RTF/Repository+Configuration+JSON
+    Should use
+    https://www.jfrog.com/confluence/display/RTF/Repository+Configuration+JSON
     for the inputs.
 
     Does not error checking; will fail if the json is malformed.
@@ -209,7 +227,8 @@ def cr_repository(host_url, repo_dict, auth=None, session=None):
     Parameters
     ----------
     host_url : string
-        A url of the form http(s)://domainname:port[/context] or http(s)://ip:port[/context]
+        A url of the form
+        http(s)://domainname:port[/context] or http(s)://ip:port[/context]
     repo_dict : OrderedDict
         a dictionary of the inputs required by artifactroy.  see above.
     auth : tuple, optional
@@ -225,15 +244,7 @@ def cr_repository(host_url, repo_dict, auth=None, session=None):
         true if succeeded
 
     """
-    if session is None and auth is None:
-        raise InvalidAPICallError("You must pass either auth or session to cr_repository")
-
-    if session:
-        ses = session
-    else:
-        ses = requests.Session()
-        ses.auth = auth
-
+    ses = _get_artifactory_session(auth, session)
     if 'key' not in repo_dict:
         raise InvalidAPICallError("The repo_dict must include a repo key (repo_dict['key'])")
 
@@ -249,11 +260,155 @@ def cr_repository(host_url, repo_dict, auth=None, session=None):
     else:
         resp = ses.put(repo_url, json=repo_dict, headers=headers)
 
-    # YELLOW need to add more logic to make this aware of if the configuration is changing
+    # YELLOW need to add more logic to make this aware of if the configuration
+    # is changing
     if resp.ok:
         return True
     else:
         return False
+
+def _get_artifactory_session(username=None, passwd=None, auth=None,
+        session=None):
+    """ return a session with auth set.  prioritizes existing sessions,
+        but validates that auth is set
+
+    Parameters
+    ----------
+    username : string, optional
+        username to create auth tuple from
+    password : string, optional
+        password for auth tuple
+    auth : tuple, optional
+        A tuple of (user, password), as used by requests
+    session : requests.Session
+        A requests.Session object, with auth
+
+    Returns
+    -------
+    InvalidAPICallError
+        When no combination of required inputs is given
+    """
+    if session is None and auth is None and username is None and passwd is None:
+        raise InvalidAPICallError(
+                "You must pass either username/password, auth, or session"
+                )
+    ses = None
+    if session:
+        if s.auth:
+            ses = session
+
+    if auth and not ses:
+        ses = requests.Session()
+        ses.auth = auth
+
+    if (username and passwd) and not ses:
+        auth = (username, passwd)
+        ses = requests.Session()
+        ses.auth = auth
+
+    if not ses:
+        raise InvalidAPICallError(
+                "You must pass either username/password, auth, or session"
+                )
+
+    return ses
+
+def get_repo_configs(host_url, repo_list, username=None, passwd=None,
+        auth=None, session=None):
+    """ return repository configuration dictionaries for specified set of repos
+
+    Parameters
+    ----------
+    host_url : string
+        An artifactory url of the form
+        http(s)://domainname:port[/context] or http(s)://ip:port[/context]
+    repo_list : list of strings
+        A list of repo keys that you want to get configs for.  repo
+        keys should match the url in the artifactory rest call
+    username : string, optional
+        username to create auth tuple from
+    passwd : string, optional
+        password for auth tuple
+    auth : tuple, optional
+        A tuple of (user, password), as used by requests
+    session : requests.Session
+        A requests.Session object, with auth
+
+    Either session, auth, or user/pass must be defined.
+    Session overrides auth overides username/password
+    See _get_artifactory_session for details
+    """
+    ses = _get_artifactory_session(
+            username=username,
+            passwd=passwd,
+            auth=auth,
+            session=session
+            )
+
+    repo_configs_list = []
+    for repo in repo_list:
+        repo_url = '{}/artifactory/api/repositories/{}'.format(
+                normalize_url(host_url),
+                repo
+                )
+        resp = ses.get(repo_url)
+        if not resp.ok:
+            msg = "Failed to fetch config for {}".format(repo)
+            raise UnknownArtifactoryRestError(msg, resp)
+
+        repo_dict = resp.json()
+        repo_configs_list.append(repo_dict)
+
+    return repo_configs_list
+
+
+def get_repo_list(host_url, repo_type="ALL", include_defaults=False,
+        include_filter=None):
+    """ return repository configuration dictionaries for specified set of repos
+
+    Parameters
+    ----------
+    host_url : string
+        An artifactory url of the form
+        http(s)://domainname:port[/context] or http(s)://ip:port[/context]
+    repo_type : {'all', 'LOCAL', 'REMOTE', 'VIRTUAL'}
+        What types of repo (as defined by artifactory) to fetch.
+    include_defaults : boolean
+        Whether to include repos that ship with artifactory
+    include_filter : string
+        String which is used to do a simple filter of repo names. (in)
+        Using this + naming convention can filter by package type.
+
+    Either session, auth, or user/pass must be defined.
+    Session overrides auth overides username/password
+    See _get_artifactory_session for details
+    """
+    repos_url = '{}/artifactory/api/repositories'.format(host_url)
+    resp = requests.get(repos_url)
+    if not resp.ok:
+        raise UnknownArtifactoryRestError("Error fetching repos", resp)
+
+    final_repo_list = resp.json()
+
+    if repo_type.upper() != "ALL":
+        if repo_type.upper() not in ART_REPO_TYPES:
+            raise InvalidAPICallError("repo_type must be one of {}".format(
+                ART_REPO_TYPES
+                )
+            )
+        final_repo_list = [r for r in final_repo_list
+            if r['type'] == repo_type.upper()]
+
+    if include_filter:
+        final_repo_list = [r for r in final_repo_list
+            if include_filter in r['url'].split('/')[-1]]
+
+    if not include_defaults:
+        final_repo_list = [r for r in final_repo_list
+            if r['key'] not in ART_DEFAULT_REPOS]
+
+    return final_repo_list
+
 
 if __name__ == '__main__':
     print("This file is not the entrypoint for artifactory_tool")
